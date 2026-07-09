@@ -1,0 +1,26 @@
+# RAG Service 依赖
+# 原则: 不引入 langchain 大包，原生化
+
+# Web
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.0.0
+
+# Config
+pyyaml>=6.0
+
+# ML (sentence-transformers only, no langchain)
+sentence-transformers>=3.0.0
+numpy>=1.24.0
+
+# LLM (仅 /rag/answer 需要)
+langchain-core>=0.3.0
+langchain-openai>=0.2.0
+
+# Storage (服务器部署时安装)
+# qdrant-client>=1.9.0
+# redis>=5.0.0
+
+# Dev
+httpx>=0.27.0
+pytest>=8.0.0

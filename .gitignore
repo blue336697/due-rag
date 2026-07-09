@@ -1,0 +1,14 @@
+# Generated indexes
+.local/indexes/bm25/*.pkl
+.local/indexes/manifests/*.json
+.local/indexes/jobs/
+
+# Python
+__pycache__/
+*.pyc
+
+# Models
+local_models/
+
+# Docker
+docker-compose.override.yml

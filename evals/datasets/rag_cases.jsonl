@@ -1,0 +1,10 @@
+{"id": "q001", "query": "交易金额字段是什么意思", "expected_source": "字段定义/amount.md", "expected_heading": "交易金额", "domain": "bank_stmt"}
+{"id": "q002", "query": "发生额和交易金额一样吗", "expected_source": "字段定义/amount.md", "expected_heading": "发生额", "domain": "bank_stmt"}
+{"id": "q003", "query": "微信支付流水包含哪些字段", "expected_source": "规则/微信.md", "expected_heading": "微信支付", "domain": "bank_stmt"}
+{"id": "q004", "query": "如何判断收支方向", "expected_source": "规则/收支方向.md", "expected_heading": "收支方向", "domain": "bank_stmt"}
+{"id": "q005", "query": "银行卡号在流水中如何识别", "expected_source": "字段定义/card_number.md", "expected_heading": "银行卡号", "domain": "bank_stmt"}
+{"id": "q006", "query": "对公流水和个人流水的区别", "expected_source": "规则/流水类型.md", "expected_heading": "流水类型", "domain": "bank_stmt"}
+{"id": "q007", "query": "余额字段为什么要校验连续性", "expected_source": "规则/余额连续性.md", "expected_heading": "余额连续性", "domain": "bank_stmt"}
+{"id": "q008", "query": "交易时间格式有哪些", "expected_source": "字段定义/transaction_time.md", "expected_heading": "交易时间", "domain": "bank_stmt"}
+{"id": "q009", "query": "对方账户信息包括什么", "expected_source": "字段定义/counterparty.md", "expected_heading": "对方账户", "domain": "bank_stmt"}
+{"id": "q010", "query": "手续费在哪个字段体现", "expected_source": "字段定义/fee.md", "expected_heading": "手续费", "domain": "bank_stmt"}

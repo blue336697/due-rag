@@ -1,0 +1,65 @@
+# RAG Service 编排 — qdrant + redis + rag-service — 部署指南 §12
+# 本地: docker compose -f docker/docker-compose.yml up -d
+# 服务器: 取消模型/知识库/索引目录挂载注释
+
+version: "3.8"
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: rag-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__GRPC_PORT: 6334
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: rag-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  rag-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: rag-service
+    ports:
+      - "8020:8020"
+    environment:
+      RAG_EMBEDDING_MODEL: /models/bge-small-zh-v1.5
+      RAG_RERANKER_MODEL: /models/bge-reranker-base
+      RAG_EMBEDDING_DEVICE: cpu
+      RAG_RERANKER_DEVICE: cpu
+      QDRANT_URL: http://qdrant:6333
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      LLM_BASE_URL: "${LLM_BASE_URL}"
+      LLM_API_KEY: "${LLM_API_KEY}"
+      LLM_MODEL: "${LLM_MODEL}"
+      RAG_SERVICE_API_KEY: "${RAG_SERVICE_API_KEY:-}"
+      RAG_KNOWLEDGE_ROOT: /app/knowledge_base
+      RAG_INDEX_DIR: /data/payment-rag/indexes
+      RAG_BM25_INDEX_DIR: /data/payment-rag/indexes/bm25
+    volumes:
+      # 服务器: 模型 + 索引外挂。知识库已在镜像内 (COPY knowledge_base/ /app/knowledge_base/)
+      # - /data/payment-rag/models:/models:ro
+      # - /data/payment-rag/indexes:/data/payment-rag/indexes
+      - indexes_data:/data/payment-rag/indexes
+    depends_on:
+      - qdrant
+      - redis
+    restart: unless-stopped
+
+volumes:
+  qdrant_data:
+  redis_data:
+  indexes_data:

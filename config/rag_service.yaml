@@ -1,0 +1,144 @@
+# RAG Service canonical 配置（非敏感参数，进 git）
+# 密钥、密码、API Key 通过环境变量注入，不进此文件。
+# 本文件是部署指南和高级检索开发指南共同引用的唯一配置模板。
+
+server:
+  host: "${RAG_SERVICE_HOST:0.0.0.0}"
+  port: 8020
+  api_key_env: "RAG_SERVICE_API_KEY"
+  # 鉴权模式: "none" | "header" (X-API-Key)。
+  # none 仅限本地开发；生产必须使用 header 或由内网 mTLS/网关统一鉴权。
+  auth_mode: "none"
+
+paths:
+  # 知识库、索引、模型锁均在 rag-service 内，自包含。
+  knowledge_root: "${RAG_KNOWLEDGE_ROOT:rag-service/knowledge_base}"
+  index_dir: "${RAG_INDEX_DIR:rag-service/.local/indexes}"
+  bm25_index_dir: "${RAG_BM25_INDEX_DIR:rag-service/.local/indexes/bm25}"
+  model_lock_file: "${RAG_MODEL_LOCK_FILE:rag-service/.local/indexes/manifests/models.lock.json}"
+
+domains:
+  bank_stmt:
+    enabled: true
+    dir: "流水问答"
+    knowledge_dir: "${RAG_BANK_STMT_KNOWLEDGE_DIR:}"
+    collection: "bank_stmt_knowledge"
+    retrieval_mode: "hybrid"
+    pipeline_profile: "hybrid_advanced"
+    bm25_namespace: "bank_stmt"
+    require_vector: true
+    require_reranker: true
+    enable_context_enrich: true
+  config_gen:
+    enabled: false
+    experimental: true
+    dir: "流水配置生成 RAG增强"
+    knowledge_dir: "${RAG_CONFIG_GEN_KNOWLEDGE_DIR:}"
+    retrieval_mode: "keyword"
+    pipeline_profile: "keyword_simple"
+    bm25_namespace: "parser_config_knowledge"
+    require_vector: false
+    require_reranker: false
+    enable_context_enrich: false
+
+models:
+  embedding:
+    path: "${RAG_EMBEDDING_MODEL:BAAI/bge-small-zh-v1.5}"
+    model_id: "BAAI/bge-small-zh-v1.5"
+    revision: "${RAG_EMBEDDING_REVISION:}"
+    dim: 512
+    device: "${RAG_EMBEDDING_DEVICE:cpu}"
+    normalize: true
+    semantic_similarity_threshold: 0.62
+  reranker:
+    path: "${RAG_RERANKER_MODEL:BAAI/bge-reranker-base}"
+    model_id: "BAAI/bge-reranker-base"
+    revision: "${RAG_RERANKER_REVISION:}"
+    device: "${RAG_RERANKER_DEVICE:cpu}"
+    max_length: 512
+
+chunking:
+  # 当前唯一合法值为 semantic；fixed/recursive 需要新增实现后再开放。
+  mode: "semantic"
+  child_max_tokens: 350
+  child_min_tokens: 80
+  parent_max_tokens: 1200
+  overlap_tokens: 40
+
+# tokenizer 来源别名，不是模型名:
+# embedding -> models.embedding 对应 tokenizer
+# reranker -> models.reranker 对应 tokenizer
+# llm -> llm.model 对应 tokenizer
+tokenizers:
+  chunking: "embedding"
+  embedding_text: "embedding"
+  rerank_context: "reranker"
+  answer_context: "llm"
+
+small_to_big:
+  enabled: true
+  return_parent: true
+  max_parent_tokens: 1200
+
+context_enrich:
+  enabled: true
+  before: 1
+  after: 1
+  max_context_tokens: 1800
+
+retrieval:
+  mode: "hybrid"
+  top_k_keyword: 20
+  top_k_vector: 40
+  rrf_k: 60
+  rrf_top_n: 10
+  top_k_rerank: 5
+  default_top_k: 5
+  dedup_jaccard_threshold: 0.8
+  allow_rerank_fallback: false
+  max_quote_chars: 160
+
+reindex:
+  async: true
+  job_ttl_seconds: 86400
+  running_timeout_seconds: 1800
+  publish_lock_timeout_seconds: 5
+  online_strategy: "atomic_swap"
+
+runtime:
+  search_snapshot_mode: "rcu"
+  model_executor: "threadpool"
+  embedding_max_concurrency: 1
+  reranker_max_concurrency: 1
+  manifest_reload: "redis_pubsub_with_polling_fallback"
+  manifest_poll_interval_seconds: 2
+
+eval:
+  enable_debug_api: false
+
+qdrant:
+  url: "${QDRANT_URL:}"
+  api_key_env: "QDRANT_API_KEY"
+  prefer_grpc: false
+  timeout: 10
+  vector_size: 512
+  distance: "Cosine"
+  keep_versions: 2
+
+redis:
+  url: "${REDIS_URL:}"
+  host: "${REDIS_HOST:localhost}"
+  port: 6379
+  db: 0
+  password_env: "REDIS_PASSWORD"
+
+llm:
+  base_url: "${LLM_BASE_URL:}"
+  api_key_env: "LLM_API_KEY"
+  model: "${LLM_MODEL:}"
+  timeout_seconds: 60
+
+# BM25 分词和同义词
+bm25:
+  jieba_dict: ""
+  stop_words: []

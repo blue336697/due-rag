@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "created_at": "2026-07-09",
+  "metrics": {
+    "keyword_recall_3": null,
+    "vector_recall_3": null,
+    "hybrid_recall_3": null,
+    "source_coverage": null,
+    "answer_rate": null,
+    "refusal_accuracy": null
+  },
+  "note": "部署后运行 POST /rag/eval/search 评测后填充"
+}
