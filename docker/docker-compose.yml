@@ -1,8 +1,5 @@
-# RAG Service 编排 — qdrant + redis + rag-service — 部署指南 §12
-# 本地: docker compose -f docker/docker-compose.yml up -d
-# 服务器: 取消模型/知识库/索引目录挂载注释
-
-version: "3.8"
+# RAG Service 编排 — qdrant + redis + rag-service
+# 启动: docker-compose -f docker/docker-compose.yml up -d
 
 services:
   qdrant:
@@ -12,7 +9,7 @@ services:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - qdrant_data:/qdrant/storage
+      - /opt/uboss/haojie.liu/rag-data/qdrant:/qdrant/storage
     environment:
       QDRANT__SERVICE__GRPC_PORT: 6334
     restart: unless-stopped
@@ -21,9 +18,9 @@ services:
     image: redis:7-alpine
     container_name: rag-redis
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
-      - redis_data:/data
+      - /opt/uboss/haojie.liu/rag-data/redis:/data
     restart: unless-stopped
     command: redis-server --appendonly yes
 
@@ -32,34 +29,25 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     container_name: rag-service
-    ports:
-      - "8020:8020"
+    network_mode: host
     environment:
-      RAG_EMBEDDING_MODEL: /models/bge-small-zh-v1.5
-      RAG_RERANKER_MODEL: /models/bge-reranker-base
+      RAG_EMBEDDING_MODEL: /models/BAAI/bge-small-zh-v1.5
+      RAG_RERANKER_MODEL: /models/BAAI/bge-reranker-base
       RAG_EMBEDDING_DEVICE: cpu
       RAG_RERANKER_DEVICE: cpu
-      QDRANT_URL: http://qdrant:6333
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      LLM_BASE_URL: "${LLM_BASE_URL}"
-      LLM_API_KEY: "${LLM_API_KEY}"
-      LLM_MODEL: "${LLM_MODEL}"
+      QDRANT_URL: http://127.0.0.1:6333
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6380
+      LLM_BASE_URL: "https://bailian.brgroup.com"
+      LLM_API_KEY: "sk-D6aImOGGzOq2S3vWsWLTW547eoZNlLOJjiScS0X4J9s6lrYR"
+      LLM_MODEL: "DeepSeek-V4-flash"
       RAG_SERVICE_API_KEY: "${RAG_SERVICE_API_KEY:-}"
       RAG_KNOWLEDGE_ROOT: /app/knowledge_base
-      RAG_INDEX_DIR: /data/payment-rag/indexes
-      RAG_BM25_INDEX_DIR: /data/payment-rag/indexes/bm25
+      RAG_INDEX_DIR: /indexes
+      RAG_BM25_INDEX_DIR: /indexes/bm25
+      HF_HUB_OFFLINE: "1"
     volumes:
-      # 服务器: 模型 + 索引外挂。知识库已在镜像内 (COPY knowledge_base/ /app/knowledge_base/)
-      # - /data/payment-rag/models:/models:ro
-      # - /data/payment-rag/indexes:/data/payment-rag/indexes
-      - indexes_data:/data/payment-rag/indexes
-    depends_on:
-      - qdrant
-      - redis
+      - /opt/uboss/haojie.liu/rag-data/models/huggingface:/models:ro
+      - /opt/uboss/haojie.liu/rag-data/indexes:/indexes
+      - /opt/uboss/haojie.liu/rag-data/logs:/app/logs
     restart: unless-stopped
-
-volumes:
-  qdrant_data:
-  redis_data:
-  indexes_data:

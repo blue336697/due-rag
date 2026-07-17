@@ -305,9 +305,14 @@ class RetrievalService:
                 child_dicts = [_chunk_to_dict(c) for c in all_children]
                 texts = [c.get("content", "") for c in child_dicts]
                 vectors = self._embedding_model.encode(texts)
-                self._vector_store._chunks = []
-                self._vector_store._vectors = []
-                self._vector_store.add(child_dicts, vectors)
+                if hasattr(self._vector_store, 'upsert'):
+                    # Qdrant - use upsert
+                    self._vector_store.upsert(child_dicts, vectors)
+                else:
+                    # InMemory - use add
+                    self._vector_store._chunks = []
+                    self._vector_store._vectors = []
+                    self._vector_store.add(child_dicts, vectors)
             except Exception as e:
                 _logger.warning("Vector rebuild failed: %s", e)
 

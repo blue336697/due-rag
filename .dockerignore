@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.gitignore
+.ipynb_checkpoints/
+*.log
+.pytest_cache/
+.ruff_cache/
+.local/
+*.md
+!README.md
+docs/
+tests/
+evals/
+*.zip

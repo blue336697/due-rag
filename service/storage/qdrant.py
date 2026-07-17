@@ -95,13 +95,25 @@ class QdrantVectorStore:
         return self._client
 
     def search(self, query_vector: List[float], top_k: int, filters: Dict[str, Any] | None = None) -> List[Dict[str, Any]]:
-        results = self.client.search(
-            collection_name=self._collection_name,
-            query_vector=query_vector,
-            limit=top_k,
-            query_filter=filters,
-        )
-        return [{"chunk_id": r.id, "score": round(r.score, 4), **r.payload} for r in results]
+        # qdrant-client 1.18+ uses query_points instead of search
+        try:
+            from qdrant_client.models import QueryRequest
+            results = self.client.query_points(
+                collection_name=self._collection_name,
+                query=query_vector,
+                limit=top_k,
+                query_filter=filters,
+            )
+            return [{"chunk_id": r.id, "score": round(r.score, 4), **r.payload} for r in results.points]
+        except AttributeError:
+            # Fallback for older versions
+            results = self.client.search(
+                collection_name=self._collection_name,
+                query_vector=query_vector,
+                limit=top_k,
+                query_filter=filters,
+            )
+            return [{"chunk_id": r.id, "score": round(r.score, 4), **r.payload} for r in results]
 
     def count(self) -> int:
         try:
@@ -113,14 +125,25 @@ class QdrantVectorStore:
     def upsert(self, chunks: List[Dict[str, Any]], vectors: List[List[float]]) -> None:
         try:
             from qdrant_client.models import PointStruct
-            points = [
-                PointStruct(
-                    id=c.get("chunk_id", f"chunk_{i}"),
-                    vector=vec,
-                    payload=self._build_payload(c),
+            import uuid
+            points = []
+            for i, (c, vec) in enumerate(zip(chunks, vectors)):
+                # Qdrant requires integer or UUID format for point ID
+                # Use deterministic UUID based on chunk_id hash
+                chunk_id = c.get("chunk_id", f"chunk_{i}")
+                try:
+                    # Generate deterministic UUID from chunk_id
+                    point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, chunk_id))
+                except Exception:
+                    point_id = str(uuid.uuid4())
+
+                points.append(
+                    PointStruct(
+                        id=point_id,
+                        vector=vec,
+                        payload=self._build_payload(c),
+                    )
                 )
-                for i, (c, vec) in enumerate(zip(chunks, vectors))
-            ]
             self.client.upsert(collection_name=self._collection_name, points=points)
             _logger.info("Qdrant upsert: %d points → %s", len(points), self._collection_name)
         except Exception:

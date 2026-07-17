@@ -37,7 +37,7 @@ async def lifespan(_app: FastAPI) -> Any:
 
 def _init_retrieval_service(app: FastAPI) -> None:
     """初始化 RetrievalService 并挂载到 app.state。"""
-    from service.core.config import get_config, get_knowledge_dir
+    from service.core.config import get_config, get_knowledge_dir, get_collection_name
     from service.retrieval.service import RetrievalService
 
     cfg = get_config()
@@ -66,8 +66,43 @@ def _init_retrieval_service(app: FastAPI) -> None:
     # 初始化 vector store
     vector_store = None
     if embedding_model is not None:
-        from service.storage.qdrant import InMemoryVectorStore
-        vector_store = InMemoryVectorStore()
+        # 优先使用 Qdrant（生产环境），否则回退到内存存储
+        qdrant_url = cfg["qdrant"]["url"]
+        if qdrant_url:
+            try:
+                from service.storage.qdrant import QdrantVectorStore
+                collection = get_collection_name(domain) if (domain := next(iter(knowledge_dirs), None)) else "rag_knowledge"
+                vector_store = QdrantVectorStore(
+                    url=qdrant_url,
+                    api_key=os.getenv(cfg["qdrant"]["api_key_env"], ""),
+                    collection_name=collection,
+                    timeout=cfg["qdrant"]["timeout"],
+                )
+                # 确保collection存在
+                try:
+                    from qdrant_client.models import VectorParams, Distance
+                    vector_store.client.create_collection(
+                        collection_name=collection,
+                        vectors_config=VectorParams(
+                            size=cfg["embedding"]["dim"],
+                            distance=Distance.COSINE,
+                        ),
+                    )
+                    _logger.info("Qdrant collection created/verified: %s", collection)
+                except Exception as e:
+                    # collection可能已存在
+                    _logger.debug("Qdrant collection check: %s", e)
+                vector_store.create_payload_indexes()
+                _logger.info("Using Qdrant vector store: %s (collection=%s)", qdrant_url, collection)
+            except Exception as e:
+                _logger.warning("Qdrant not available, falling back to in-memory: %s", e)
+                from service.storage.qdrant import InMemoryVectorStore
+                vector_store = InMemoryVectorStore()
+        else:
+            from service.storage.qdrant import InMemoryVectorStore
+            vector_store = InMemoryVectorStore()
+            _logger.info("Using in-memory vector store (no Qdrant URL configured)")
+
         # 为每个 domain 构建向量索引
         for domain, knowledge_dir in knowledge_dirs.items():
             try:
@@ -83,7 +118,12 @@ def _init_retrieval_service(app: FastAPI) -> None:
                 if chunks:
                     texts = [str(c["content"]) for c in chunks]
                     vectors = embedding_model.encode(texts)
-                    vector_store.add(chunks, vectors)
+                    if hasattr(vector_store, 'upsert'):
+                        # Qdrant
+                        vector_store.upsert(chunks, vectors)
+                    else:
+                        # InMemory
+                        vector_store.add(chunks, vectors)
                     _logger.info("Vector index built for domain=%s: %d chunks", domain, len(chunks))
             except Exception as e:
                 _logger.warning("Failed to build index for domain=%s: %s", domain, e)
