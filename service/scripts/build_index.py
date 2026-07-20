@@ -22,7 +22,7 @@ def main() -> None:
     parser.add_argument("--domain", default="bank_stmt", help="业务域")
     args = parser.parse_args()
 
-    from service.core.config import get_config, get_knowledge_dir
+    from service.core.config import get_config, get_knowledge_dir, get_managed_knowledge_dir
     from service.models.embedding import EmbeddingModel
     from service.storage.qdrant import InMemoryVectorStore
     from service.retrieval.service import RetrievalService
@@ -46,6 +46,7 @@ def main() -> None:
         reranker_model=None,
         retrieval_config=cfg["retrieval"],
         llm_config=cfg.get("llm", {}),
+        managed_knowledge_dirs={domain: get_managed_knowledge_dir(domain)},
     )
 
     result = retrieval_service.reindex_domain(domain)

@@ -39,15 +39,23 @@ services:
       REDIS_HOST: 127.0.0.1
       REDIS_PORT: 6380
       LLM_BASE_URL: "https://bailian.brgroup.com"
-      LLM_API_KEY: "sk-D6aImOGGzOq2S3vWsWLTW547eoZNlLOJjiScS0X4J9s6lrYR"
+      LLM_API_KEY: "${LLM_API_KEY:?LLM_API_KEY is required}"
       LLM_MODEL: "DeepSeek-V4-flash"
-      RAG_SERVICE_API_KEY: "${RAG_SERVICE_API_KEY:-}"
+      RAG_AUTH_MODE: "header"
+      RAG_SERVICE_API_KEY: "${RAG_SERVICE_API_KEY:?RAG_SERVICE_API_KEY is required}"
       RAG_KNOWLEDGE_ROOT: /app/knowledge_base
+      RAG_MANAGED_KNOWLEDGE_ROOT: /managed-knowledge
       RAG_INDEX_DIR: /indexes
       RAG_BM25_INDEX_DIR: /indexes/bm25
+      RAG_INGESTION_DIR: /ingestion
+      RAG_OCR_BASE_URL: "${RAG_OCR_BASE_URL:-http://192.168.160.88:7557}"
+      RAG_OCR_MODEL: "${RAG_OCR_MODEL:-br-ocr-v1}"
       HF_HUB_OFFLINE: "1"
     volumes:
+      - /opt/uboss/haojie.liu/rag-data/knowledge_base:/app/knowledge_base:ro
+      - /opt/uboss/haojie.liu/rag-data/managed_knowledge:/managed-knowledge
       - /opt/uboss/haojie.liu/rag-data/models/huggingface:/models:ro
       - /opt/uboss/haojie.liu/rag-data/indexes:/indexes
+      - /opt/uboss/haojie.liu/rag-data/ingestion:/ingestion
       - /opt/uboss/haojie.liu/rag-data/logs:/app/logs
     restart: unless-stopped

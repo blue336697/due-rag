@@ -18,6 +18,10 @@ def _resolve_env(value: str) -> str:
 def _resolve_value(value: Any) -> Any:
     if isinstance(value, str):
         return _resolve_env(value)
+    if isinstance(value, dict):
+        return {key: _resolve_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_resolve_value(item) for item in value]
     return value
 
 def _load_raw() -> Dict[str, Any]:
@@ -48,7 +52,9 @@ def get_config() -> Dict[str, Any]:
     runtime = raw.get("runtime", {})
     eval_cfg = raw.get("eval", {})
     tokenizers = raw.get("tokenizers", {})
+    ingestion = raw.get("ingestion", {})
     knowledge_root = _resolve_value(paths.get("knowledge_root", knowledge.get("base_dir", "backend/knowledge_base")))
+    managed_knowledge_root = _resolve_value(paths.get("managed_knowledge_root", ".local/managed_knowledge"))
     top_k_keyword = int(retrieval.get("top_k_keyword", retrieval.get("keyword_recall_top", 20)))
     top_k_vector = int(retrieval.get("top_k_vector", retrieval.get("vector_recall_top", 40)))
     top_k_rerank = int(retrieval.get("top_k_rerank", retrieval.get("rerank_top_k", 5)))
@@ -57,7 +63,7 @@ def get_config() -> Dict[str, Any]:
             "host": _resolve_value(server.get("host", "0.0.0.0")),
             "port": int(server.get("port", 8020)),
             "api_key_env": server.get("api_key_env", "RAG_SERVICE_API_KEY"),
-            "auth_mode": server.get("auth_mode", "none"),
+            "auth_mode": _resolve_value(server.get("auth_mode", "none")),
         },
         "knowledge": {
             "base_dir": knowledge_root,
@@ -65,9 +71,11 @@ def get_config() -> Dict[str, Any]:
         },
         "paths": {
             "knowledge_root": knowledge_root,
+            "managed_knowledge_root": managed_knowledge_root,
             "index_dir": _resolve_value(paths.get("index_dir", "backend/rag-service/.local/indexes")),
             "bm25_index_dir": _resolve_value(paths.get("bm25_index_dir", "backend/rag-service/.local/indexes/bm25")),
             "model_lock_file": _resolve_value(paths.get("model_lock_file", "backend/rag-service/.local/indexes/manifests/models.lock.json")),
+            "ingestion_dir": _resolve_value(paths.get("ingestion_dir", ".local/ingestion")),
         },
         "embedding": {
             "model": os.getenv("RAG_EMBEDDING_MODEL", _resolve_value(embedding.get("path", embedding.get("model", "BAAI/bge-small-zh-v1.5")))),
@@ -143,13 +151,20 @@ def get_config() -> Dict[str, Any]:
             "jieba_dict": bm25.get("jieba_dict", ""),
             "stop_words": bm25.get("stop_words", []),
         },
+        "ingestion": {
+            "max_upload_bytes": int(ingestion.get("max_upload_bytes", 52428800)),
+            "allowed_extensions": list(ingestion.get("allowed_extensions", [".md", ".txt", ".html", ".htm", ".docx", ".pdf", ".png", ".jpg", ".jpeg"])),
+            "min_text_chars": int(ingestion.get("min_text_chars", 50)),
+            "auto_publish": bool(ingestion.get("auto_publish", False)),
+            "ocr": dict(_resolve_value(ingestion.get("ocr", {}))),
+        },
     }
 
 def get_knowledge_dir(domain: str) -> str:
     cfg = get_config()
     base = Path(cfg["knowledge"]["base_dir"])
     if not base.is_absolute():
-        base = Path(__file__).resolve().parents[3] / base
+        base = Path(__file__).resolve().parents[2] / base
     domain_cfg = cfg["knowledge"]["domains"].get(domain, {})
     explicit_dir = _resolve_value(domain_cfg.get("knowledge_dir", ""))
     if explicit_dir:
@@ -158,6 +173,26 @@ def get_knowledge_dir(domain: str) -> str:
             return str(explicit_path)
     domain_dir = domain_cfg.get("dir", "")
     return str(base / domain_dir) if domain_dir else str(base)
+
+
+def get_managed_knowledge_dir(domain: str) -> str:
+    """返回系统发布文档的独立可写目录，并阻止 domain 逃逸 managed 根目录。"""
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", domain):
+        raise ValueError(f"invalid managed knowledge domain: {domain}")
+    cfg = get_config()
+    if domain not in cfg["knowledge"]["domains"]:
+        raise ValueError(f"unknown domain: {domain}")
+    base = Path(cfg["paths"]["managed_knowledge_root"])
+    if not base.is_absolute():
+        base = Path(__file__).resolve().parents[2] / base
+    base = base.resolve()
+    target = (base / domain).resolve()
+    if target.parent != base:
+        raise ValueError(f"managed knowledge path escapes root: {domain}")
+    source = Path(get_knowledge_dir(domain)).resolve()
+    if target == source or source in target.parents or target in source.parents:
+        raise ValueError("managed knowledge directory must be outside the read-only source knowledge directory")
+    return str(target)
 
 def get_collection_name(domain: str) -> str:
     cfg = get_config()

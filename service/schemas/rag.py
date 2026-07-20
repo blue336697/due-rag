@@ -186,7 +186,7 @@ class AnswerResponse(BaseModel):
 
 
 class ReindexRequest(BaseModel):
-    collection: str = Field(description="目标 collection 名称")
+    collection: Optional[str] = Field(default=None, description="目标 collection 名称；传入时必须与 domain 配置一致")
     domain: str = Field(default="bank_stmt", description="业务域")
     force: bool = Field(default=False, description="是否强制重建")
 
@@ -207,6 +207,8 @@ class ReindexStatusResponse(BaseModel):
     job_id: str = Field(description="任务 ID")
     status: str = Field(default="unknown", description="任务状态")
     progress: ReindexProgress = Field(default_factory=ReindexProgress)
+    result: Dict[str, Any] = Field(default_factory=dict)
+    error: Optional[str] = Field(default=None)
 
 
 class EvalSearchRequest(BaseModel):

@@ -8,9 +8,9 @@ import logging
 import os
 from typing import Callable
 
-from fastapi import Request, HTTPException
+from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 _logger = logging.getLogger(__name__)
 
@@ -32,20 +32,21 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         if self._auth_mode == "header":
             if not self._api_key:
-                raise HTTPException(status_code=500, detail="API key not configured")
+                return JSONResponse(status_code=500, content={"detail": "API key not configured"})
             if request.headers.get("X-API-Key", "") != self._api_key:
-                raise HTTPException(status_code=401, detail="Invalid or missing API key")
+                return JSONResponse(status_code=401, content={"detail": "Invalid or missing API key"})
             return await call_next(request)
 
         _logger.warning("Unknown auth_mode: %s", self._auth_mode)
-        return await call_next(request)
+        return JSONResponse(status_code=500, content={"detail": "Invalid authentication mode"})
 
 
-def create_auth_middleware() -> AuthMiddleware:
+def create_auth_middleware(app) -> AuthMiddleware:
     from service.core.config import get_config
     cfg = get_config()
     svc = cfg.get("service", {})
     return AuthMiddleware(
+        app,
         auth_mode=svc.get("auth_mode", "none"),
         api_key_env=svc.get("api_key_env", "RAG_SERVICE_API_KEY"),
     )

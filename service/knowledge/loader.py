@@ -21,12 +21,12 @@ def content_fingerprint(directory: Path) -> str:
     """计算知识库目录内容的 SHA256 指纹。"""
     hasher = hashlib.sha256()
     for md_file in sorted(directory.rglob("*.md")):
-        hasher.update(str(md_file.relative_to(directory)).encode())
+        hasher.update(md_file.relative_to(directory).as_posix().encode())
         hasher.update(md_file.read_bytes())
     return hasher.hexdigest()[:16]
 
 
-def load_knowledge_chunks(knowledge_dir: str) -> List[Dict[str, object]]:
+def load_knowledge_chunks(knowledge_dir: str, source_prefix: str = "") -> List[Dict[str, object]]:
     """加载知识库目录下所有 .md 文件，按二级标题切块。"""
     directory = Path(knowledge_dir)
     if not directory.exists():
@@ -43,7 +43,10 @@ def load_knowledge_chunks(knowledge_dir: str) -> List[Dict[str, object]]:
         if not text.strip():
             continue
 
-        rel_path = str(md_file.relative_to(directory))
+        rel_path = md_file.relative_to(directory).as_posix()
+        prefix = source_prefix.strip("/\\")
+        if prefix:
+            rel_path = f"{prefix}/{rel_path}"
         file_chunks = _split_markdown(text)
         for i, chunk in enumerate(file_chunks):
             heading = str(chunk.get("heading", ""))

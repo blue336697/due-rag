@@ -10,25 +10,34 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Sequence, Tuple
 
 from service.schemas.rag import Chunk, IndexManifest
 
 
-def compute_knowledge_version(knowledge_dir: str) -> str:
-    """基于知识库所有 .md 文件的路径+大小+mtime 生成 fingerprint。"""
-    directory = Path(knowledge_dir)
-    if not directory.exists():
+def compute_knowledge_version(
+    knowledge_dir: str,
+    additional_dirs: Optional[Sequence[Tuple[str, str]]] = None,
+) -> str:
+    """基于人工知识库及附加 managed 目录生成稳定 fingerprint。"""
+    sources = [("", Path(knowledge_dir))]
+    sources.extend((prefix.strip("/\\"), Path(path)) for prefix, path in (additional_dirs or []))
+    if not any(directory.exists() for _, directory in sources):
         return "empty"
 
     hasher = hashlib.sha256()
-    for md_file in sorted(directory.rglob("*.md")):
-        if md_file.name.startswith("."):
+    for prefix, directory in sources:
+        if not directory.exists():
             continue
-        rel = str(md_file.relative_to(directory))
-        hasher.update(rel.encode("utf-8"))
-        hasher.update(str(md_file.stat().st_size).encode("utf-8"))
-        hasher.update(str(int(md_file.stat().st_mtime)).encode("utf-8"))
+        for md_file in sorted(directory.rglob("*.md")):
+            if md_file.name.startswith("."):
+                continue
+            rel = md_file.relative_to(directory).as_posix()
+            source = f"{prefix}/{rel}" if prefix else rel
+            hasher.update(source.encode("utf-8"))
+            hasher.update(b"\0")
+            hasher.update(md_file.read_bytes())
+            hasher.update(b"\0")
     return hasher.hexdigest()[:16]
 
 

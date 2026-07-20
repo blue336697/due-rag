@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Dict, List, Optional, Protocol
 
 import numpy as np
@@ -85,6 +86,21 @@ class QdrantVectorStore:
         self._client: Any = None
 
     @property
+    def collection_name(self) -> str:
+        return self._collection_name
+
+    def with_collection(self, collection_name: str) -> "QdrantVectorStore":
+        """创建共享连接配置、指向另一 collection 的存储实例。"""
+        store = QdrantVectorStore(
+            url=self._url,
+            api_key=self._api_key,
+            collection_name=collection_name,
+            timeout=self._timeout,
+        )
+        store._client = self.client
+        return store
+
+    @property
     def client(self) -> Any:
         if self._client is None:
             try:
@@ -122,6 +138,37 @@ class QdrantVectorStore:
         except Exception:
             return 0
 
+    def recreate_collection(self, vector_size: int, distance: str = "Cosine") -> None:
+        """重建仅用于 staging 的 collection，禁止对在线 collection 调用。"""
+        from qdrant_client.models import Distance, VectorParams
+
+        distance_value = getattr(Distance, distance.upper(), Distance.COSINE)
+        existing = {c.name for c in self.client.get_collections().collections}
+        if self._collection_name in existing:
+            self.client.delete_collection(collection_name=self._collection_name)
+        self.client.create_collection(
+            collection_name=self._collection_name,
+            vectors_config=VectorParams(size=vector_size, distance=distance_value),
+        )
+
+    def delete_collection(self) -> None:
+        self.client.delete_collection(collection_name=self._collection_name)
+
+    def cleanup_versioned_collections(self, base_name: str, keep: int, active: str) -> None:
+        """保留最近 keep 个版本化 collection，永不删除 active。"""
+        pattern = re.compile(rf"^{re.escape(base_name)}_v(\d+)$")
+        versions: List[tuple[int, str]] = []
+        for item in self.client.get_collections().collections:
+            match = pattern.match(item.name)
+            if match:
+                versions.append((int(match.group(1)), item.name))
+        versions.sort(reverse=True)
+        retained = {name for _, name in versions[:max(1, keep)]}
+        retained.add(active)
+        for _, name in versions:
+            if name not in retained:
+                self.client.delete_collection(collection_name=name)
+
     def upsert(self, chunks: List[Dict[str, Any]], vectors: List[List[float]]) -> None:
         try:
             from qdrant_client.models import PointStruct
@@ -144,7 +191,7 @@ class QdrantVectorStore:
                         payload=self._build_payload(c),
                     )
                 )
-            self.client.upsert(collection_name=self._collection_name, points=points)
+            self.client.upsert(collection_name=self._collection_name, points=points, wait=True)
             _logger.info("Qdrant upsert: %d points → %s", len(points), self._collection_name)
         except Exception:
             _logger.warning("Qdrant upsert failed", exc_info=True)

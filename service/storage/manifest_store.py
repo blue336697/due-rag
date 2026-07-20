@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -21,12 +23,24 @@ def _manifest_path(index_dir: str, domain: str) -> Path:
 
 
 def save_manifest(manifest: IndexManifest, index_dir: str) -> None:
-    """写入 IndexManifest 到磁盘。目录不存在时自动创建。"""
+    """原子写入 IndexManifest；失败时保留旧版本。"""
     filepath = _manifest_path(index_dir, manifest.domain)
     filepath.parent.mkdir(parents=True, exist_ok=True)
     data = manifest.model_dump(mode="json")
-    with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2, default=str)
+    temp_path: Optional[str] = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=filepath.parent,
+            prefix=f".{filepath.name}.", suffix=".tmp", delete=False,
+        ) as f:
+            temp_path = f.name
+            json.dump(data, f, ensure_ascii=False, indent=2, default=str)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, filepath)
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.unlink(temp_path)
     _logger.info("Manifest saved: domain=%s v%d chunks=%d", manifest.domain, manifest.version, manifest.chunk_count)
 
 

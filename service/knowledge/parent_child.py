@@ -75,6 +75,7 @@ def build_parent_child_chunks(
 
         parent_heading_path = extract_heading_path(parsed.heading_events, section_start)
         parent_meta = extract_metadata(relative_path, parsed, section_start)
+        leading_trim = len(section_text) - len(section_text.lstrip())
         parent_content = section_text.strip()
         parent_hash = compute_content_hash(parent_content)
         parent_id = compute_chunk_id(
@@ -110,6 +111,15 @@ def build_parent_child_chunks(
             continue
 
         # 语义分块
+        protected_ranges: List[Tuple[int, int]] = []
+        for start, end in parsed.table_ranges + parsed.code_block_ranges + parsed.list_ranges:
+            local_start = max(start, section_start) - section_start - leading_trim
+            local_end = min(end, section_end) - section_start - leading_trim
+            local_start = max(0, local_start)
+            local_end = min(len(parent_content), local_end)
+            if local_start < local_end:
+                protected_ranges.append((local_start, local_end))
+
         child_texts = semantic_chunk(
             text=parent_content,
             token_counter=token_counter,
@@ -118,7 +128,7 @@ def build_parent_child_chunks(
             min_tokens=child_min_tokens,
             max_tokens=child_max_tokens,
             overlap_tokens=overlap_tokens,
-            protected_ranges=parsed.table_ranges + parsed.code_block_ranges,
+            protected_ranges=protected_ranges,
         )
 
         for i, child_text in enumerate(child_texts, start=1):

@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
@@ -37,17 +38,20 @@ async def lifespan(_app: FastAPI) -> Any:
 
 def _init_retrieval_service(app: FastAPI) -> None:
     """初始化 RetrievalService 并挂载到 app.state。"""
-    from service.core.config import get_config, get_knowledge_dir, get_collection_name
+    from service.core.config import get_config, get_knowledge_dir, get_managed_knowledge_dir, get_collection_name
+    from service.storage.manifest_store import load_manifest
     from service.retrieval.service import RetrievalService
 
     cfg = get_config()
 
     # 构建 domain -> knowledge_dir 映射
     knowledge_dirs: dict[str, str] = {}
+    managed_knowledge_dirs: dict[str, str] = {}
     for domain, domain_cfg in cfg["knowledge"]["domains"].items():
         if not domain_cfg.get("enabled", True):
             continue
         knowledge_dirs[domain] = get_knowledge_dir(domain)
+        managed_knowledge_dirs[domain] = get_managed_knowledge_dir(domain)
 
     # 初始化 embedding model
     embedding_model = None
@@ -65,13 +69,21 @@ def _init_retrieval_service(app: FastAPI) -> None:
 
     # 初始化 vector store
     vector_store = None
+    persisted_manifest = None
     if embedding_model is not None:
         # 优先使用 Qdrant（生产环境），否则回退到内存存储
         qdrant_url = cfg["qdrant"]["url"]
         if qdrant_url:
             try:
                 from service.storage.qdrant import QdrantVectorStore
-                collection = get_collection_name(domain) if (domain := next(iter(knowledge_dirs), None)) else "rag_knowledge"
+                domain = next(iter(knowledge_dirs), None)
+                if domain:
+                    persisted_manifest = load_manifest(cfg["paths"]["index_dir"], domain)
+                collection = (
+                    persisted_manifest.collection
+                    if persisted_manifest and persisted_manifest.collection
+                    else get_collection_name(domain) if domain else "rag_knowledge"
+                )
                 vector_store = QdrantVectorStore(
                     url=qdrant_url,
                     api_key=os.getenv(cfg["qdrant"]["api_key_env"], ""),
@@ -95,20 +107,29 @@ def _init_retrieval_service(app: FastAPI) -> None:
                 vector_store.create_payload_indexes()
                 _logger.info("Using Qdrant vector store: %s (collection=%s)", qdrant_url, collection)
             except Exception as e:
-                _logger.warning("Qdrant not available, falling back to in-memory: %s", e)
-                from service.storage.qdrant import InMemoryVectorStore
-                vector_store = InMemoryVectorStore()
+                # 显式配置了 Qdrant 时不能静默写入易失性内存索引，否则 job 会伪成功。
+                _logger.error("Configured Qdrant is unavailable: %s", e)
+                vector_store = None
         else:
             from service.storage.qdrant import InMemoryVectorStore
             vector_store = InMemoryVectorStore()
             _logger.info("Using in-memory vector store (no Qdrant URL configured)")
 
-        # 为每个 domain 构建向量索引
+        # 已有持久化 generation 时直接加载；首次启动才走兼容性初始化。
+        persisted_vector_ready = bool(
+            persisted_manifest and vector_store is not None and vector_store.count() > 0
+        )
         for domain, knowledge_dir in knowledge_dirs.items():
+            if persisted_vector_ready:
+                _logger.info("Using persisted vector generation: domain=%s collection=%s", domain, persisted_manifest.collection)
+                continue
             try:
                 from service.knowledge.loader import load_knowledge_chunks
                 from service.core.synonyms import build_synonym_tags
                 chunks = load_knowledge_chunks(knowledge_dir)
+                managed_dir = managed_knowledge_dirs.get(domain, "")
+                if managed_dir and Path(managed_dir).exists():
+                    chunks.extend(load_knowledge_chunks(managed_dir, source_prefix="_managed"))
                 # 同义词增强 — 写入 embedding_text，禁止污染 content
                 for chunk in chunks:
                     original = str(chunk["content"])
@@ -159,8 +180,13 @@ def _init_retrieval_service(app: FastAPI) -> None:
         reranker_model=reranker_model,
         retrieval_config=cfg["retrieval"],
         llm_config=llm_config,
+        managed_knowledge_dirs=managed_knowledge_dirs,
     )
+    retrieval_service.load_persisted_indexes()
     app.state.retrieval_service = retrieval_service
+    # 初始化持久化 ingestion 队列，并恢复上次重启前未完成的任务。
+    from service.ingestion.jobs import get_ingestion_job_manager
+    get_ingestion_job_manager()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -174,11 +200,24 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# 鉴权配置在本地可为 none，生产可切换为 header。
+from service.core.config import get_config
+from service.core.security import AuthMiddleware
+
+_security_cfg = get_config()["service"]
+app.add_middleware(
+    AuthMiddleware,
+    auth_mode=_security_cfg.get("auth_mode", "none"),
+    api_key_env=_security_cfg.get("api_key_env", "RAG_SERVICE_API_KEY"),
+)
+
 # 路由注册
 from service.api.health import router as health_router
 from service.api.rag import router as rag_router
 from service.api.admin import router as admin_router
+from service.api.documents import router as documents_router
 
 app.include_router(health_router)
 app.include_router(rag_router)
 app.include_router(admin_router)
+app.include_router(documents_router)

@@ -1,7 +1,5 @@
 # Generated indexes
-.local/indexes/bm25/*.pkl
-.local/indexes/manifests/*.json
-.local/indexes/jobs/
+.local/indexes/
 
 # Python
 __pycache__/

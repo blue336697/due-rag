@@ -25,12 +25,15 @@ class ParsedMarkdown:
     # (start, end) in content
     code_block_ranges: List[Tuple[int, int]] = field(default_factory=list)
     # (start, end) in content
+    list_ranges: List[Tuple[int, int]] = field(default_factory=list)
+    # (start, end) in content
 
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
 _TABLE_LINE_RE = re.compile(r"^\|.+\|.*\|$")
 _CODE_FENCE_RE = re.compile(r"^```", re.MULTILINE)
+_LIST_LINE_RE = re.compile(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)")
 
 
 def parse_markdown(raw_text: str) -> ParsedMarkdown:
@@ -67,6 +70,9 @@ def parse_markdown(raw_text: str) -> ParsedMarkdown:
 
     # 5. 识别代码块范围
     result.code_block_ranges = _find_code_block_ranges(result.content)
+
+    # 6. 识别连续列表范围
+    result.list_ranges = _find_list_ranges(result.content)
 
     return result
 
@@ -121,6 +127,29 @@ def _find_code_block_ranges(content: str) -> List[Tuple[int, int]]:
             end_line_end = len(content)
         ranges.append((start, end_line_end))
 
+    return ranges
+
+
+def _find_list_ranges(content: str) -> List[Tuple[int, int]]:
+    """识别连续 Markdown 列表，避免从单个列表项中间切块。"""
+    lines = content.splitlines(keepends=True)
+    ranges: List[Tuple[int, int]] = []
+    start: Optional[int] = None
+    pos = 0
+
+    for line in lines:
+        is_item = bool(_LIST_LINE_RE.match(line))
+        is_continuation = start is not None and bool(line.strip()) and line[:1].isspace()
+        if is_item or is_continuation:
+            if start is None:
+                start = pos
+        elif start is not None:
+            ranges.append((start, pos))
+            start = None
+        pos += len(line)
+
+    if start is not None:
+        ranges.append((start, len(content)))
     return ranges
 
 

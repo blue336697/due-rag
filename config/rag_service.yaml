@@ -8,14 +8,38 @@ server:
   api_key_env: "RAG_SERVICE_API_KEY"
   # 鉴权模式: "none" | "header" (X-API-Key)。
   # none 仅限本地开发；生产必须使用 header 或由内网 mTLS/网关统一鉴权。
-  auth_mode: "none"
+  auth_mode: "${RAG_AUTH_MODE:none}"
 
 paths:
   # 知识库、索引、模型锁均在 rag-service 内，自包含。
-  knowledge_root: "${RAG_KNOWLEDGE_ROOT:rag-service/knowledge_base}"
-  index_dir: "${RAG_INDEX_DIR:rag-service/.local/indexes}"
-  bm25_index_dir: "${RAG_BM25_INDEX_DIR:rag-service/.local/indexes/bm25}"
-  model_lock_file: "${RAG_MODEL_LOCK_FILE:rag-service/.local/indexes/manifests/models.lock.json}"
+  knowledge_root: "${RAG_KNOWLEDGE_ROOT:knowledge_base}"
+  # 上传并审核通过的文档只写入此目录；人工知识库可以继续只读挂载。
+  managed_knowledge_root: "${RAG_MANAGED_KNOWLEDGE_ROOT:.local/managed_knowledge}"
+  index_dir: "${RAG_INDEX_DIR:.local/indexes}"
+  bm25_index_dir: "${RAG_BM25_INDEX_DIR:.local/indexes/bm25}"
+  model_lock_file: "${RAG_MODEL_LOCK_FILE:.local/indexes/manifests/models.lock.json}"
+  ingestion_dir: "${RAG_INGESTION_DIR:.local/ingestion}"
+
+ingestion:
+  max_upload_bytes: 52428800
+  allowed_extensions: [".md", ".txt", ".html", ".htm", ".docx", ".pdf", ".png", ".jpg", ".jpeg"]
+  min_text_chars: 50
+  auto_publish: false
+  ocr:
+    enabled: true
+    # 与 due-agent 一致：公司 br-ocr-v1 主链路，上传后轮询结构化 page_parse_json。
+    flow:
+      base_url: "${RAG_OCR_BASE_URL:http://192.168.160.88:7557}"
+      model: "${RAG_OCR_MODEL:br-ocr-v1}"
+      max_polls: 300
+      poll_interval_seconds: 1
+      connect_timeout_seconds: 30
+      read_timeout_seconds: 60
+      poll_connect_timeout_seconds: 10
+      poll_read_timeout_seconds: 30
+      priority: 3
+      split_method: "smart"
+      chunk_size: 300
 
 domains:
   bank_stmt:
