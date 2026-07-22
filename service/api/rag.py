@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 
 from service.core.config import get_config
+from service.models.answer_llm import AnswerGenerationError
 
 from service.schemas.rag import (
     AnswerRequest,
@@ -87,13 +88,22 @@ def search(request: Request, body: SearchRequest) -> SearchResponse:
 def answer(request: Request, body: AnswerRequest) -> AnswerResponse:
     _validate_domain(body.domain)
     svc = _get_retrieval_service(request)
-    result = svc.answer(
-        question=body.question,
-        domain=body.domain,
-        top_k=body.top_k,
-        with_citations=body.with_citations,
-        return_retrieved=body.return_retrieved,
-    )
+    try:
+        result = svc.answer(
+            question=body.question,
+            domain=body.domain,
+            top_k=body.top_k,
+            with_citations=body.with_citations,
+            return_retrieved=body.return_retrieved,
+        )
+    except AnswerGenerationError:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "answer_generation_failed",
+                "message": "LLM answer generation failed",
+            },
+        ) from None
     return AnswerResponse(
         answer=result["answer"],
         citations=[

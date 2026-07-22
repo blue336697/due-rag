@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 _logger = logging.getLogger(__name__)
 
@@ -20,11 +20,15 @@ _QA_SYSTEM_PROMPT = """你是一个支付流水解析知识库的问答助手。
 5. 引用格式：在参考文献部分列出 "[编号] 文件名 - 标题"。"""
 
 
+class AnswerGenerationError(RuntimeError):
+    """LLM 无法生成答案；由 API 层转换为明确的上游服务错误。"""
+
+
 def generate_answer(
     question: str,
     retrieved: List[Dict[str, Any]],
     llm_config: Dict[str, Any],
-) -> Tuple[str, bool, str]:
+) -> str:
     """调用 LLM 生成带引用的答案。
 
     Args:
@@ -33,12 +37,13 @@ def generate_answer(
         llm_config: LLM 配置 {"base_url": str, "api_key": str, "model": str, "timeout_seconds": int}
 
     Returns:
-        (answer_text, degraded, error_reason)
-        - degraded=True 表示 LLM 调用失败，回退到原始片段
-        - error_reason 为空字符串或失败原因
+        LLM 生成的答案文本。
+
+    Raises:
+        AnswerGenerationError: LLM 初始化、调用或响应解析失败。
     """
     if not retrieved:
-        return "知识库信息不足，无法回答该问题。", False, ""
+        return "知识库信息不足，无法回答该问题。"
 
     # 构建带编号的知识库片段
     chunks_text_parts: List[str] = []
@@ -93,8 +98,7 @@ def generate_answer(
             ],
         )
         answer = response.choices[0].message.content.strip()
-        return answer, False, ""
+        return answer
     except Exception as exc:
-        error_reason = f"{type(exc).__name__}: {exc}"
-        _logger.warning("LLM 生成回答失败: %s", error_reason)
-        return chunks_text, True, error_reason
+        _logger.error("LLM 生成回答失败: error_type=%s", type(exc).__name__)
+        raise AnswerGenerationError("LLM answer generation failed") from exc

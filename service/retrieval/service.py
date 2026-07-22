@@ -257,14 +257,14 @@ class RetrievalService:
         citations = [c.model_dump() if hasattr(c, "model_dump") else c for c in build_citations(results)] if with_citations else []
 
         from service.models.answer_llm import generate_answer
-        answer_text, degraded, error_reason = generate_answer(question, results, self._llm_config)
+        answer_text = generate_answer(question, results, self._llm_config)
 
         elapsed = (time.perf_counter() - t0) * 1000
         return {
             "answer": answer_text,
-            "answer_mode": "fallback" if degraded else "llm",
-            "degraded": degraded,
-            "error_reason": error_reason,
+            "answer_mode": "llm",
+            "degraded": False,
+            "error_reason": "",
             "citations": citations,
             "retrieved": results if return_retrieved else [],
             "retriever": sr["retriever"],

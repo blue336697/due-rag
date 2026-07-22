@@ -178,10 +178,10 @@ class AnswerRequest(BaseModel):
 
 
 class AnswerResponse(BaseModel):
-    answer: str = Field(description="LLM 生成的带引用答案，或降级时的原始片段")
-    answer_mode: str = Field(default="llm", description="llm=正常回答, fallback=降级返回原始片段")
-    degraded: bool = Field(default=False, description="是否为降级结果（LLM 调用失败）")
-    error_reason: str = Field(default="", description="降级时的错误原因")
+    answer: str = Field(description="LLM 生成的带引用答案")
+    answer_mode: str = Field(default="llm", description="成功响应固定为 llm；LLM 失败时接口返回 HTTP 502")
+    degraded: bool = Field(default=False, description="兼容字段；成功响应固定为 false")
+    error_reason: str = Field(default="", description="兼容字段；成功响应固定为空，失败详情由 HTTP 错误契约表达")
     citations: list[Citation] = Field(default_factory=list)
     retrieved: list[SearchResult] = Field(default_factory=list)
     retriever: RetrieverMeta = Field(default_factory=lambda: RetrieverMeta(mode="none"))

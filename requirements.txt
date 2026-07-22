@@ -19,8 +19,7 @@ sentence-transformers>=3.0.0
 numpy>=1.24.0
 
 # LLM (仅 /rag/answer 需要)
-langchain-core>=0.3.0
-langchain-openai>=0.2.0
+openai>=2.0.0
 
 # Storage (服务器部署时安装)
 qdrant-client>=1.9.0
