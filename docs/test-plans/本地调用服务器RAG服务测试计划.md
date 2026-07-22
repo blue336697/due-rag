@@ -25,7 +25,7 @@
 PowerShell：
 
 ```powershell
-$RagServer = "<服务器IP或域名>"
+$RagServer = "10.100.123.84"
 $RagBase = "http://${RagServer}:8020"
 $RagApiKey = "<从安全渠道取得的API Key>"
 $Headers = @{ "X-API-Key" = $RagApiKey }

@@ -179,8 +179,8 @@ class RetrievalService:
         vector_store = snapshot.get("vector_store", self._vector_store)
         domain_chunks = snapshot.get("chunks_by_id", self._chunks_by_id.get(domain, {}))
 
-        kw_top = cfg.get("top_k_keyword", cfg.get("keyword_recall_top", 20))
-        vec_top = cfg.get("top_k_vector", cfg.get("vector_recall_top", 40))
+        kw_top = max(top_k, cfg.get("top_k_keyword", cfg.get("keyword_recall_top", 20)))
+        vec_top = max(top_k, cfg.get("top_k_vector", cfg.get("vector_recall_top", 40)))
         rrf_k = cfg.get("rrf_k", 60)
         rrf_n = cfg.get("rrf_top_n", 10)
         top_k_rerank = cfg.get("top_k_rerank", 5)
@@ -212,12 +212,13 @@ class RetrievalService:
                 vec_results = []
             merged = merge_dedup(kw_results, vec_results, threshold=dedup_threshold)
             if merged:
-                candidates = rrf_fusion(merged, k=rrf_k, top_n=rrf_n)
+                candidates = rrf_fusion(merged, k=rrf_k, top_n=max(top_k, rrf_n))
                 if enable_ce and domain_chunks:
                     candidates = enrich_context(candidates, domain_chunks, small_to_big_enabled=small_to_big)
                 enriched = [c.get("_enriched_text", c.get("content", "")) for c in candidates]
                 try:
-                    results = rerank_candidates(candidates, query, self._reranker_model, top_k_rerank, allow_rerank_fallback=allow_fallback, enriched_texts=enriched)
+                    rerank_limit = max(top_k, top_k_rerank)
+                    results = rerank_candidates(candidates, query, self._reranker_model, rerank_limit, allow_rerank_fallback=allow_fallback, enriched_texts=enriched)
                 except RerankerError:
                     raise
 
@@ -229,7 +230,7 @@ class RetrievalService:
             sb.setdefault("rerank_score", r.get("rerank_score"))
             sb.setdefault("final_score", r.get("score", 0.0))
             r.setdefault("retriever", mode)
-        return results, {"profile": "hybrid_advanced"}
+        return results[:top_k], {"profile": "hybrid_advanced"}
 
     # ── Eval ──
 

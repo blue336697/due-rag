@@ -98,7 +98,12 @@ def keyword_recall(
             scored.append({
                 "source": chunk["source"],
                 "heading": chunk.get("heading", ""),
+                "heading_path": list(chunk.get("heading_path") or []),
                 "content": chunk.get("content", ""),
+                "chunk_id": chunk.get("chunk_id", ""),
+                "parent_id": chunk.get("parent_id"),
+                "content_hash": chunk.get("content_hash", ""),
+                "metadata": dict(chunk.get("metadata") or {}),
                 "keyword_score": round(score, 4),
             })
 
@@ -187,12 +192,5 @@ class BM25Index:
             return False
 
     def search(self, query: str, top_k: int) -> List[Dict[str, Any]]:
-        """关键词召回。复用 keyword_recall，添加 chunk_id/heading_path 等字段。"""
-        results = keyword_recall(query, self._chunks, top_k)
-        # 补充 chunk metadata 字段
-        for i, r in enumerate(results):
-            r.setdefault("chunk_id", "")
-            r.setdefault("heading_path", [r.get("heading", "")] if r.get("heading") else [])
-            r.setdefault("parent_id", None)
-            r.setdefault("content_hash", "")
-        return results
+        """关键词召回；结果保留索引 chunk 的完整追踪字段。"""
+        return keyword_recall(query, self._chunks, top_k)

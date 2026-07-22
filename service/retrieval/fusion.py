@@ -23,16 +23,31 @@ def merge_dedup(
     vec_results: List[Dict[str, Any]],
     threshold: float = 0.8,
 ) -> List[Dict[str, Any]]:
-    """合并关键词和向量结果，Jaccard > threshold 视为重复，保留先出现的。"""
+    """合并关键词和向量结果，重复项合并字段和两路召回分数。"""
     merged: List[Dict[str, Any]] = []
     seen_contents: List[str] = []
 
     for r in kw_results + vec_results:
         content = r.get("content", "")
-        is_dup = any(jaccard_similarity(content, s) > threshold for s in seen_contents)
-        if not is_dup:
+        duplicate_index = next(
+            (
+                index
+                for index, seen_content in enumerate(seen_contents)
+                if jaccard_similarity(content, seen_content) > threshold
+            ),
+            None,
+        )
+        if duplicate_index is None:
             seen_contents.append(content)
-            merged.append(r)
+            merged.append(dict(r))
+            continue
+
+        existing = merged[duplicate_index]
+        for key, value in r.items():
+            if key in {"keyword_score", "vector_score"}:
+                existing[key] = value
+            elif key not in existing or existing[key] in (None, "", [], {}):
+                existing[key] = value
 
     return merged
 
@@ -57,7 +72,11 @@ def rrf_fusion(
         kw_rank[id(r)] = rank
 
     # vector 排名
-    vec_candidates = [r for r in merged if "keyword_score" not in r]
+    vec_candidates = sorted(
+        [r for r in merged if "vector_score" in r],
+        key=lambda r: r.get("vector_score", 0),
+        reverse=True,
+    )
     vec_rank: Dict[int, int] = {}
     for rank, r in enumerate(vec_candidates, start=1):
         vec_rank[id(r)] = rank

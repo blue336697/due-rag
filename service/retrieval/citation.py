@@ -7,9 +7,12 @@
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List, Optional
 
 from service.schemas.rag import Citation
+
+_logger = logging.getLogger(__name__)
 
 
 def build_citations(
@@ -19,6 +22,13 @@ def build_citations(
     """从检索结果构建 Citation 列表。index 按顺序从 1 递增。"""
     citations: List[Citation] = []
     for i, r in enumerate(results):
+        if not r.get("chunk_id") or not r.get("content_hash"):
+            _logger.warning(
+                "Citation trace fields missing: source=%s chunk_id_present=%s content_hash_present=%s",
+                r.get("source", ""),
+                bool(r.get("chunk_id")),
+                bool(r.get("content_hash")),
+            )
         quote = _extract_quote(r.get("content", ""), max_quote_chars)
         citations.append(Citation(
             index=i + 1,
