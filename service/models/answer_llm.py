@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 _logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ def generate_answer(
     question: str,
     retrieved: List[Dict[str, Any]],
     llm_config: Dict[str, Any],
-) -> str:
+) -> Tuple[str, bool, str]:
     """调用 LLM 生成带引用的答案。
 
     Args:
@@ -33,10 +33,12 @@ def generate_answer(
         llm_config: LLM 配置 {"base_url": str, "api_key": str, "model": str, "timeout_seconds": int}
 
     Returns:
-        生成的答案文本
+        (answer_text, degraded, error_reason)
+        - degraded=True 表示 LLM 调用失败，回退到原始片段
+        - error_reason 为空字符串或失败原因
     """
     if not retrieved:
-        return "知识库信息不足，无法回答该问题。"
+        return "知识库信息不足，无法回答该问题。", False, ""
 
     # 构建带编号的知识库片段
     chunks_text_parts: List[str] = []
@@ -66,21 +68,33 @@ def generate_answer(
 
 用户问题：{question}"""
 
-    try:
-        from langchain_core.messages import HumanMessage, SystemMessage
-        from langchain_openai import ChatOpenAI
+    base_url = llm_config.get("base_url", "")
+    api_key = llm_config.get("api_key", "")
+    model = llm_config.get("model", "")
+    timeout = llm_config.get("timeout_seconds", 60)
 
-        llm = ChatOpenAI(
-            base_url=llm_config.get("base_url", ""),
-            api_key=llm_config.get("api_key", ""),
-            model=llm_config.get("model", ""),
-            timeout=llm_config.get("timeout_seconds", 60),
+    # 确保 base_url 以 /v1 结尾
+    if base_url and not base_url.rstrip("/").endswith("/v1"):
+        base_url = base_url.rstrip("/") + "/v1"
+
+    try:
+        from openai import OpenAI
+
+        client = OpenAI(
+            base_url=base_url,
+            api_key=api_key,
+            timeout=timeout,
         )
-        response = llm.invoke([
-            SystemMessage(content=_QA_SYSTEM_PROMPT),
-            HumanMessage(content=user_prompt),
-        ])
-        return response.content.strip()
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": _QA_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+        answer = response.choices[0].message.content.strip()
+        return answer, False, ""
     except Exception as exc:
-        _logger.warning("LLM 生成回答失败，回退到原始拼接: %s", exc)
-        return chunks_text
+        error_reason = f"{type(exc).__name__}: {exc}"
+        _logger.warning("LLM 生成回答失败: %s", error_reason)
+        return chunks_text, True, error_reason

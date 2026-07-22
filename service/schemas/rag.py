@@ -178,7 +178,10 @@ class AnswerRequest(BaseModel):
 
 
 class AnswerResponse(BaseModel):
-    answer: str = Field(description="LLM 生成的带引用答案")
+    answer: str = Field(description="LLM 生成的带引用答案，或降级时的原始片段")
+    answer_mode: str = Field(default="llm", description="llm=正常回答, fallback=降级返回原始片段")
+    degraded: bool = Field(default=False, description="是否为降级结果（LLM 调用失败）")
+    error_reason: str = Field(default="", description="降级时的错误原因")
     citations: list[Citation] = Field(default_factory=list)
     retrieved: list[SearchResult] = Field(default_factory=list)
     retriever: RetrieverMeta = Field(default_factory=lambda: RetrieverMeta(mode="none"))
