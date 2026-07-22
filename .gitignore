@@ -10,6 +10,8 @@ local_models/
 
 # Docker
 docker-compose.override.yml
+.env
+*.env
 
 # Jupyter
 .ipynb_checkpoints/
